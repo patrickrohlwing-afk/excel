@@ -1,0 +1,141 @@
+from flask import Flask, request, render_template_string, jsonify
+import pandas as pd
+import os
+
+app = Flask(__name__)
+
+UPLOAD_FOLDER = "uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+file_path = None
+
+HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+<title>Excel Tool</title>
+
+<link href="https://unpkg.com/tabulator-tables@5.5.0/dist/css/tabulator.min.css" rel="stylesheet">
+<script src="https://unpkg.com/tabulator-tables@5.5.0/dist/js/tabulator.min.js"></script>
+
+<style>
+body {
+    font-family: Arial;
+    background: #1e1e2f;
+    color: white;
+    padding: 20px;
+}
+
+button {
+    padding: 10px;
+    border-radius: 8px;
+    border: none;
+    background: #4CAF50;
+    color: white;
+    cursor: pointer;
+}
+</style>
+
+</head>
+<body>
+
+<h2>📊 Excel Tool (Online)</h2>
+
+<form method="post" enctype="multipart/form-data">
+<input type="file" name="file">
+<input name="search" placeholder="11000/1">
+<input name="value" placeholder="Wert">
+<button type="submit">Speichern</button>
+</form>
+
+<hr>
+
+<div id="table"></div>
+
+<br>
+<button onclick="saveData()">💾 Tabelle speichern</button>
+
+<script>
+var table = new Tabulator("#table", {
+    data: {{data|safe}},
+    layout: "fitColumns",
+    reactiveData:true,
+    columns: Object.keys({{data|safe}}[0] || {}).map(key => ({
+        title: key,
+        field: key,
+        editor: "input"
+    }))
+});
+
+function saveData(){
+    fetch("/save", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify(table.getData())
+    }).then(()=>alert("Gespeichert ✔"));
+}
+</script>
+
+</body>
+</html>
+"""
+
+@app.route("/", methods=["GET", "POST"])
+def index():
+    global file_path
+
+    df = pd.DataFrame()
+
+    if request.method == "POST":
+        f = request.files.get("file")
+
+        if f and f.filename:
+            file_path = os.path.join(UPLOAD_FOLDER, f.filename)
+            f.save(file_path)
+
+        search = request.form.get("search")
+        value = request.form.get("value")
+
+        if file_path:
+            if file_path.endswith(".csv"):
+                df = pd.read_csv(file_path, sep=";", dtype=str)
+            else:
+                df = pd.read_excel(file_path, dtype=str)
+
+            if search and "/" in search:
+                a, b = search.split("/")
+
+                col_c = df.columns[2]
+                col_d = df.columns[3]
+                col_e = df.columns[4]
+
+                mask = (df[col_c].astype(str) == a) & (df[col_d].astype(str) == b)
+
+                if mask.any() and value:
+                    df.loc[mask, col_e] = value
+
+            # speichern
+            if file_path.endswith(".csv"):
+                df.to_csv(file_path, sep=";", index=False)
+            else:
+                df.to_excel(file_path, index=False)
+
+    return render_template_string(HTML, data=df.to_dict(orient="records"))
+
+@app.route("/save", methods=["POST"])
+def save():
+    global file_path
+    data = request.get_json()
+
+    df = pd.DataFrame(data)
+
+    if file_path:
+        if file_path.endswith(".csv"):
+            df.to_csv(file_path, sep=";", index=False)
+        else:
+            df.to_excel(file_path, index=False)
+
+    return jsonify({"status": "ok"})
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
