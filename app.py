@@ -1,16 +1,19 @@
-from flask import Flask, request, render_template_string, jsonify
+from flask import Flask, request, render_template_string, jsonify, send_file
 import pandas as pd
 import os
 
 app = Flask(__name__)
 
-DATA_FILE = "data.xlsx"
+UPLOAD_FOLDER = "uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+DATA_FILE = os.path.join(UPLOAD_FOLDER, "data.xlsx")
 
 HTML = """
 <!DOCTYPE html>
 <html>
 <head>
-<title>Excel Tool</title>
+<title>Excel Tool Pro</title>
 
 <link href="https://unpkg.com/tabulator-tables@5.5.0/dist/css/tabulator.min.css" rel="stylesheet">
 <script src="https://unpkg.com/tabulator-tables@5.5.0/dist/js/tabulator.min.js"></script>
@@ -44,15 +47,15 @@ button {
 
 <body>
 
-<h2>📊 Excel Tool (Final Version)</h2>
+<h2>📊 Excel Tool Pro (Cloud Version)</h2>
 
-<form method="post">
-<input name="search" placeholder="11000/1">
-<input name="value" placeholder="Wert">
-<button type="submit">Eintragen</button>
+<form method="post" enctype="multipart/form-data">
+<input type="file" name="file">
+<button type="submit">📤 Hochladen</button>
 </form>
 
-<button onclick="saveData()">💾 Tabelle speichern</button>
+<button onclick="saveData()">💾 Speichern</button>
+<a href="/download"><button>📥 Excel Download</button></a>
 
 <div id="table"></div>
 
@@ -65,20 +68,16 @@ function loadTable(data){
         data: data,
         layout: "fitColumns",
         reactiveData:true,
-        columns: [
-            {title: "C", field: "C", editor: "input"},
-            {title: "D", field: "D", editor: "input"},
-            {title: "E", field: "E", editor: "input"}
-        ]
+        autoColumns:true,
     });
 }
 
-// Daten vom Server holen
+// Daten laden
 fetch("/data")
 .then(res => res.json())
 .then(data => loadTable(data));
 
-// Tabelle speichern
+// speichern
 function saveData(){
     fetch("/save", {
         method:"POST",
@@ -96,28 +95,18 @@ function saveData(){
 @app.route("/", methods=["GET", "POST"])
 def index():
 
+    # Datei hochladen
+    if request.method == "POST":
+        f = request.files.get("file")
+
+        if f and f.filename:
+            f.save(DATA_FILE)
+
     # Datei erstellen falls nicht vorhanden
     if not os.path.exists(DATA_FILE):
         df = pd.DataFrame([
             {"C": "11000", "D": "1", "E": "Startwert"}
         ])
-        df.to_excel(DATA_FILE, index=False)
-
-    # Eintrag über Formular
-    if request.method == "POST":
-        search = request.form.get("search")
-        value = request.form.get("value")
-
-        df = pd.read_excel(DATA_FILE, dtype=str)
-
-        if search and "/" in search:
-            a, b = search.split("/")
-
-            mask = (df["C"] == a) & (df["D"] == b)
-
-            if mask.any():
-                df.loc[mask, "E"] = value
-
         df.to_excel(DATA_FILE, index=False)
 
     return render_template_string(HTML)
@@ -139,6 +128,14 @@ def save():
     df = pd.DataFrame(data)
     df.to_excel(DATA_FILE, index=False)
     return jsonify({"status": "ok"})
+
+
+# 🔹 DOWNLOAD
+@app.route("/download")
+def download():
+    if os.path.exists(DATA_FILE):
+        return send_file(DATA_FILE, as_attachment=True)
+    return "Keine Datei vorhanden"
 
 
 # 🔹 START
