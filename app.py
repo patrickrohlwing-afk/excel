@@ -25,7 +25,7 @@ body {
 
 input, button {
     padding: 10px;
-    margin: 5px 0;
+    margin: 5px;
     border-radius: 8px;
     border: none;
 }
@@ -44,7 +44,7 @@ button {
 
 <body>
 
-<h2>📊 Excel Tool (Stabile Version)</h2>
+<h2>📊 Excel Tool (Final Version)</h2>
 
 <form method="post">
 <input name="search" placeholder="11000/1">
@@ -59,23 +59,26 @@ button {
 <script>
 var table;
 
+// Tabelle laden
 function loadTable(data){
     table = new Tabulator("#table", {
         data: data,
         layout: "fitColumns",
         reactiveData:true,
-        columns: Object.keys(data[0] || {}).map(key => ({
-            title: key,
-            field: key,
-            editor: "input"
-        }))
+        columns: [
+            {title: "C", field: "C", editor: "input"},
+            {title: "D", field: "D", editor: "input"},
+            {title: "E", field: "E", editor: "input"}
+        ]
     });
 }
 
+// Daten vom Server holen
 fetch("/data")
 .then(res => res.json())
 .then(data => loadTable(data));
 
+// Tabelle speichern
 function saveData(){
     fetch("/save", {
         method:"POST",
@@ -93,10 +96,14 @@ function saveData(){
 @app.route("/", methods=["GET", "POST"])
 def index():
 
+    # Datei erstellen falls nicht vorhanden
     if not os.path.exists(DATA_FILE):
-        df = pd.DataFrame(columns=["C", "D", "E"])
+        df = pd.DataFrame([
+            {"C": "11000", "D": "1", "E": "Startwert"}
+        ])
         df.to_excel(DATA_FILE, index=False)
 
+    # Eintrag über Formular
     if request.method == "POST":
         search = request.form.get("search")
         value = request.form.get("value")
@@ -106,26 +113,24 @@ def index():
         if search and "/" in search:
             a, b = search.split("/")
 
-            col_c = df.columns[0]
-            col_d = df.columns[1]
-            col_e = df.columns[2]
-
-            mask = (df[col_c].astype(str) == a) & (df[col_d].astype(str) == b)
+            mask = (df["C"] == a) & (df["D"] == b)
 
             if mask.any():
-                df.loc[mask, col_e] = value
+                df.loc[mask, "E"] = value
 
         df.to_excel(DATA_FILE, index=False)
 
     return render_template_string(HTML)
+
 
 # 🔹 DATEN LADEN
 @app.route("/data")
 def get_data():
     if os.path.exists(DATA_FILE):
         df = pd.read_excel(DATA_FILE, dtype=str)
-        return df.fillna("").to_json(orient="records")
-    return "[]"
+        return jsonify(df.fillna("").to_dict(orient="records"))
+    return jsonify([])
+
 
 # 🔹 SPEICHERN
 @app.route("/save", methods=["POST"])
@@ -134,6 +139,7 @@ def save():
     df = pd.DataFrame(data)
     df.to_excel(DATA_FILE, index=False)
     return jsonify({"status": "ok"})
+
 
 # 🔹 START
 if __name__ == "__main__":
